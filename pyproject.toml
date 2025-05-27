@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "boto3>=1.38.23",
+    "pip>=25.1.1",
     "python-dotenv>=1.1.0",
     "spacy>=3.8.7",
 ]

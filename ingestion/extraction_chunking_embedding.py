@@ -1,32 +1,61 @@
-# ingestion/textract_parser.py
+# ingestion/extraction_chunking_embedding.py
 import os
 from dotenv import load_dotenv
 import logging
+import spacy
+import pinecone
 import time
 import boto3
 import json
 from typing import Dict, List
 
+
 load_dotenv()
 
+# Fetching environment variables
 s3_bucket = os.getenv('S3_BUCKET_NAME')
 aws_region = os.getenv('AWS_REGION')
-if not s3_bucket or not aws_region:
-    raise EnvironmentError("S3_BUCKET_NAME or AWS_REGION is not set in the .env file")
+pinecone_api_key = os.getenv('PINECONE_API_KEY')
+pinecone_env = os.getenv('PINECONE_ENVIRONMENT')
+pinecone_index = os.getenv('PINECONE_INDEX_NAME')
+s3_prefix = "textract-output/"
 
+# Validate environment variables
+required_vars = {
+    'S3_BUCKET_NAME': s3_bucket,
+    'AWS_REGION': aws_region,
+    'PINECONE_API_KEY': pinecone_api_key,
+    'PINECONE_ENVIRONMENT': pinecone_env,
+    'PINECONE_INDEX_NAME': pinecone_index,
+}
+missing_vars = [name for name, value in required_vars.items() if not value]
+if missing_vars:
+    raise EnvironmentError(f"Missing environment variables: {', '.join(missing_vars)}")
 
 # Configure logging for every module
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers = [
+        logging.FileHandler("app.log"),  # Writes the logs to a file
+        logging.StreamHandler()          # Shows logs in console
+    ]
 )
 logger = logging.getLogger(__name__)
 
-# Function to process the PDF files
+
+# Load SpaCy model that includes sentence segmentation capabilities
+nlp = spacy.load("en_core_web_sm")
+
+# Initializing Pinecone to store chunking data in Vector database
+pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
+index = pinecone.Index(pinecone_index)
+
+
+# Function to process the input PDF files for extraction
 def process_pdf_files():
-    # Get the directory of the script and data folder
-    # ingestion_dir = os.getcwd()
-    base_dir = os.path.dirname(os.path.dirname(__file__))  # Goes up one level
+    # Get the directory where input data is stored
+    base_dir = os.path.dirname(os.path.dirname(__file__))
     pdf_folder = os.path.join(base_dir, "data")  # Path to data folder with PDF files
 
     # Verify that the data folder exists with PDF files
@@ -146,6 +175,105 @@ def extract_text_with_textract(pdf_path: str, s3_bucket: str) -> Dict:
     except Exception as e:
         logger.error(f"Error processing {pdf_path}: {str(e)}", exc_info=True)
         raise
+
+
+# Function to return a list of JSON files present in "textract-output" folder on S3
+def list_textract_outputs(s3_bucket: str, s3_prefix: str) -> List[str]:
+    s3 = boto3.client('s3', region_name=aws_region)
+    response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=s3_prefix)
+    return [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith('.json')]
+
+# Function to transform the Textract output in required format
+def pagify_json(data):
+    current_page = 0
+    current_page_data = ""
+    page_content = {}
+    for block in data['blocks']:
+        if current_page != block['page']:
+            if len(current_page_data) > 0:
+                page_content[current_page] = current_page_data.strip()
+                current_page_data = ""
+                current_page = block['page']
+        current_page_data += block['text'] + " "
+    return page_content
+
+def parse_file(json_file):
+    # Define the path to the data folder
+    base_dir = os.path.dirname(os.path.dirname(__file__))  # Goes up one level
+    json_folder = os.path.join(base_dir, "json_data")  # Path to data folder with JSON files
+
+    # Check that the folder exists
+    if not os.path.isdir(json_folder):
+        logger.error(f"JSON files not found at: {json_folder}")
+        return
+
+    # Get all .json files in the folder
+    json_files = [f for f in os.listdir(json_data) if f.lower().endswith('.json')]
+
+    if not json_files:
+        logger.info("No .json files found in the json_data folder.")
+        return
+
+    # Process each JSON file
+    for file_name in json_files:
+        json_file = os.path.join(json_data, file_name)
+        logger.info(f"Reading file: {json_file}")
+
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        print(pagify_json(data))
+
+parse_file('1706.03762v7.json')
+
+
+
+# Sentence level chunking using SpaCy
+def sentence_chunking(text):
+    doc = nlp(text)
+    chunks = []
+
+    for i, sent in enumerate(doc.sents):
+        chunks.append({
+            'id': f"sent_{i}",
+            'text': sent.text.strip()
+        })
+
+    return chunks
+
+# Fetching Textract output (JSON file) for chunking
+def process_text_files():
+    # Define the path to the data folder
+    base_dir = os.path.dirname(os.path.dirname(__file__))  # Goes up one level
+    data_folder = os.path.join(base_dir, "data")  # Path to data folder with PDF files
+
+    # Check that the folder exists
+    if not os.path.isdir(data_folder):
+        logger.error(f"Data folder not found at: {data_folder}")
+        return
+
+    # Get all .txt files in the folder
+    txt_files = [f for f in os.listdir(data_folder) if f.lower().endswith('.json')]
+
+    if not txt_files:
+        logger.info("No .json files found in the data folder.")
+        return
+
+    # Process each text file
+    for file_name in txt_files:
+        file_path = os.path.join(data_folder, file_name)
+        logger.info(f"Reading file: {file_path}")
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+
+        chunks = sentence_chunking(text)
+
+        logger.info(f"Chunked {len(chunks)} sentences from {file_name}")
+
+        # Print first few sentences
+        for chunk in chunks[:5]:
+            print(chunk)
+
 
 if __name__ == "__main__":
     process_pdf_files()
