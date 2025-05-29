@@ -9,4 +9,5 @@ dependencies = [
     "pip>=25.1.1",
     "python-dotenv>=1.1.0",
     "spacy>=3.8.7",
+    "pinecone>=7.0.1"
 ]
