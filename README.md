@@ -6,6 +6,6 @@
 
 ## Demo Videos
 
-[🎬 Watch Demo Video](Ingestion_Demo.mp4)
-[🎬 Watch Demo Video](LLM_Query_Demo.mp4)
+[🎬 Ingestion Demo](Ingestion_Demo.mp4)
+[🎬 LLM Query Demo](LLM_Query_Demo.mp4)
 
