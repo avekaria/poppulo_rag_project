@@ -97,5 +97,5 @@ with gr.Blocks() as demo:
     upload_btn.click(fn=upload_and_ingest, inputs=[file_input], outputs=[output_box])
     submit_btn.click(fn=ask_question, inputs=[user_query], outputs=[llm_response])
 
-demo.launch(show_api=False)
+demo.launch(server_name="0.0.0.0", server_port=7860)
 
