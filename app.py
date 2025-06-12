@@ -1,5 +1,4 @@
 import logging
-import glob
 import os
 import argparse
 
@@ -7,6 +6,16 @@ from ingestion.textract import parse_pdf, convert_to_pages, convert_to_chunks
 from retrieval.bedrock import embed_batch
 from ingestion.pinecone_service import upload_to_pinecone
 from retrieval.semantic_search import semantic_search_and_generate
+
+# Fetching environment variables
+s3_bucket = os.getenv('S3_BUCKET_NAME')
+s3_input_folder = os.getenv('S3_INPUT_DATA_FOLDER')
+aws_region = os.getenv('AWS_REGION')
+aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+if not all([s3_bucket, s3_input_folder, aws_region, aws_access_key, aws_secret_key]):
+    raise EnvironmentError("AWS environment variables not set")
 
 
 # Configure logging for every module
@@ -21,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def ingest(s3_filepath):
+def run_ingestion_pipeline(s3_filepath):
     logger.info("Starting ingestion pipeline")
 
     for s3_key in s3_filepath:
@@ -35,28 +44,10 @@ def ingest(s3_filepath):
 
     logger.info("Ingestion completed")
 
-def complete():
+def run_llm_pipeline(user_query):
     logger.info("Starting LLM response pipeline")
 
-    user_query = input("Enter your question: ")
     response = semantic_search_and_generate(user_query=user_query)
 
     logger.info("Generated LLM response")
-    print("\n Answer:\n", response)
-
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="RAG Pipeline: Ingest and Query PDFs with LLM.")
-    parser.add_argument("action", choices=["ingest", "complete"])
-    parser.add_argument("--files", nargs="*", help="List of S3 PDF file keys")
-
-    args = parser.parse_args()
-
-    if args.action == "ingest":
-        if args.files:
-            ingest(args.files)
-        else:
-            logger.error("Please provide --files argument with S3 keys")
-    elif args.action == "complete":
-        complete()
+    return response

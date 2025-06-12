@@ -6,18 +6,6 @@ import json
 
 load_dotenv()
 
-# Fetching environment variables
-s3_bucket = os.getenv('S3_BUCKET_NAME')
-s3_input_folder = os.getenv('S3_INPUT_DATA_FOLDER')
-aws_region = os.getenv('AWS_REGION')
-aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-
-
-if not all([s3_bucket, s3_input_folder, aws_region, aws_access_key, aws_secret_key]):
-    raise EnvironmentError("AWS environment variables not set")
-
-
 # Configure logging for every module
 logging.basicConfig(
     level=logging.INFO,
@@ -30,26 +18,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def upload_pdfs_to_s3(local_folder, s3_bucket, s3_input_folder):
-    """ local_folder=/path/to/local/pdf_files
-    s3_bucket and s3_input_folder are defined as environment variables """
+def upload_pdfs_to_s3(local_filepaths, s3_bucket, s3_input_folder, aws_access_key, aws_secret_key, aws_region):
 
     s3 = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key, region_name=aws_region)
     s3_key_list = []
 
-    for filename in os.listdir(local_folder):
-        if filename.lower().endswith('.pdf'):
-            local_path = os.path.join(local_folder, filename)
-            s3_key = f"{s3_input_folder.rstrip('/')}/{filename}"
-
-            try:
-                s3.upload_file(local_path,s3_bucket, s3_key)
-                logger.info(f"Successfully uploaded {filename} to s3://{s3_bucket}/{s3_key}")
-                s3_key_list.append(s3_key)
-            except FileNotFoundError:
-                logger.error(f"File not found: {local_path}")
-            except Exception as e:
-                logger.error(f"Failed to upload {filename}: {e}")
+    for filepath in local_filepaths:
+        filename = os.path.basename(filepath)
+        s3_key = f"{s3_input_folder.rstrip('/')}/{filename}"
+        try:
+            s3.upload_file(filepath,s3_bucket, s3_key)
+            logger.info(f"Successfully uploaded {filename} to s3://{s3_bucket}/{s3_key}")
+            s3_key_list.append(s3_key)
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to upload {filename}: {e}")
 
     return s3_key_list
 

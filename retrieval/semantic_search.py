@@ -85,27 +85,54 @@ def semantic_search_and_generate(user_query, top_k=10):
             namespace=pinecone_namespace
         )
         logger.info(f"Retrieved top {top_k} similar chunks from Pinecone.")
-        for idx, m in enumerate(search_results['matches']):
-            logger.info(f"Match {idx + 1}: Page {m['metadata']['page']} from {m['metadata']['filename']} - {m['metadata']['text']}")
     except Exception as e:
         logger.error(f"Failed to query Pinecone: {e}")
         raise
 
-    # Build context from top-k chunks
+    # Collect citations and build context from top-k chunks
+    citations = []
+    context_chunks = []
+
     try:
-        top_chunks = [match['metadata']['text'] for match in search_results['matches']]
-        context = "\n\n---\n\n".join(top_chunks)
-        logger.info("Generated context from top chunks.")
+        for idx, match in enumerate(search_results['matches']):
+            metadata = match['metadata']
+
+            citation_number = idx + 1
+            chunk_text = metadata.get("text", "")
+            filename = metadata.get("filename", "unknown.pdf")
+            page = metadata.get("page", "N/A")
+
+            # Add inline tag to context chunk
+            context_chunks.append(f"[{citation_number}] {chunk_text}")
+
+            # Save reference
+            citations.append({
+                "index": citation_number,
+                "filename": filename,
+                "page": page,
+                "text": chunk_text
+            })
+
+            logger.info(f"Context [{citation_number}] - {filename} (Page {page})")
+        context = "\n\n".join(context_chunks)
+        logger.info("Generated context with citations from top chunks.")
     except Exception as e:
-        logger.error(f"Failed to build context from search results: {e}")
+        logger.error(f"Failed to build context and citations from search results: {e}")
         raise
 
     # Generate LLM response using top-k chunks as context and user query
     try:
         response = llm_call(context=context, query=user_query)
         logger.info("Generated LLM response successfully.")
-        return response
     except Exception as e:
         logger.error("Failed to generate LLM response: %s", e)
         raise
+
+    # Format reference section
+    references = "\n\nReferences:\n"
+    for citation in citations:
+        references += f"[{citation['index']}] Source: {citation['filename']}, Page: {citation['page']}, Text: {citation['text']}\n"
+
+    return f"{response}\n\n{references}"
+
 

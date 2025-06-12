@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # Initialize Bedrock client
 bedrock_client = boto3.client(service_name='bedrock-runtime', aws_access_key_id=aws_access_key,
                               aws_secret_access_key=aws_secret_key, region_name=bedrock_region)
-system_message = "You are a helpful assistant who uses the provided context to answer questions"
+system_message = "You are a helpful assistant who uses the provided context to answer questions. Always use inline citations from the provided context"
 
 def embed_single(sentence):
     global bedrock_client, embedding_model
